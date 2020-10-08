@@ -1,0 +1,161 @@
+---
+title: "Chamala_week12_Final project"
+editor_options:
+  chunk_output_type: inline
+date: "02/22/20"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r}
+#installing required packages
+library(dplyr)
+library(utils)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+library(data.table)
+library(tidyr)
+library(zoo)
+library(plyr)
+library(janitor)
+library(base)
+
+#	Children Under 3 yrs with Elevated Blood Lead Levels (BLL)
+Age3 <- read.csv("Children_Tested_for_Lead_by_Age_3.csv", header = TRUE)
+
+
+#	Children Under 6 yrs with Elevated Blood Lead Levels (BLL)
+Age6 <- read.csv("Children_Under_6_yrs_with_Elevated_Blood_Lead_Levels__BLL_.csv", header = TRUE)
+
+
+#	CDC National Childhood Blood Lead Surveillance- Children under 6 yrs with Elevated Blood Lead Levels (BLL)
+CBLS_National_Table_Update_042619 <- read_excel("CBLS-National-Table-Update-042619.xlsx", sheet = "By State and Year", col_names = FALSE)
+
+```
+
+
+Cleaning CBLS_National_Table_Update_042619 file
+
+```{r}
+#Deleting unwanted rows
+national <- CBLS_National_Table_Update_042619[-c(1:4,323:326),  ]
+
+#Assigning new headers
+names(national) <- c("year","state", "Total_population<72m", "Children_tested<72m", "%children_tested<72m", "confirmed_BLLs>5µg/dL", "%confirmed_BLLs>5µg/dL", "confirmed_BLLs>10µg/dL", "%confirmed_BLLs>10µg/dL", "confirmed_BLLs_grp_5-9 µg/dL", "confirmed_BLLs_grp_10-14 µg/dL", "confirmed_BLLs_grp_15-19 µg/dL", "confirmed_BLLs_grp_20-24 µg/dL", "confirmed_BLLs_grp_25-44 µg/dL", "confirmed_BLLs_grp_>45 µg/dL" )
+
+national$state <- na.locf(national$state)
+
+#filling NA values with 0
+national[national=="N/A"] <- 0
+
+#Deleting data which are entirely empty
+national = filter(national, !(national$state %in% c("Alaska", "Arkansas", "California", "Florida", "Hawaii", "Idaho", "Iowa", "Kansas", "Montana", "Nebraska", "Nevada", "New York City", "North Dakota", "Oregon", "South Carolina", "South Dakota", "Texas", "Utah", "Virginia", "Wyoming")))
+
+national[, c(1,3:15)] <- sapply(national[, c(1,3:15)], as.numeric)
+
+```
+
+Checking for missing data 
+
+```{r}
+any(is.na(Age3))
+any(is.na(Age6))
+any(is.na(national))
+
+```
+#Removing columns that are empty 
+For the Age6 data set, I had to use a different strategy as I do not need the Notes columns. I could not use the "remove_empty" function because, they are not all empty. There are some generic notes in some of the columns so I had to take a different approach to remove columns that all end with the string - NOTES
+
+
+```{r}
+Age3_new <- remove_empty(Age3, which = c("cols"))
+head(Age3_new)
+
+# Removing all the columns that end with NOTES 
+Age6_new <- Age6 %>% select(-contains("NOTES"))
+head(Age6_new)
+```
+
+
+
+# Renaming long column names with shorter ones for Age 3 and Age 6 data sets
+```{r setup, include=TRUE, echo=FALSE}
+
+names(Age3_new) <- c("geo_type", "geo_area_id", "geo_area_name", "borough_id", "time_period", "age3_number", "age3_percentage")
+
+names(Age6_new) <- c("geo_type", "geo_area_id", "geo_area_name", "borough_id", "time_period", "age6_bll_5", "age6_bll_10", "age6_bll_15", "age6_bll_total", "age6_bll_5_per1000", "age6_bll_10_per1000", "age6_bll_15_per1000" )
+
+
+```
+
+Displaying cleaned data 
+
+```{r setup, include=TRUE, echo=FALSE}
+head(Age3_new)
+head(Age6_new)
+head(national)
+```
+
+Slicing data to create subsets for analysis
+```{r setup, include=TRUE, echo=FALSE}
+Age3_borough <- subset(Age3_new, Age3_new$geo_type == "Borough")
+
+Age3_neighborhood <- subset(Age3_new, Age3_new$geo_type == "Neighborhood (UHF 42)")
+
+Age6_borough <- subset(Age6_new, Age6_new$geo_type == "Borough")
+
+Age6_neighborhood <- subset(Age6_new, Age6_new$geo_type == "Neighborhood (UHF 42)")
+
+national_states <- subset(national[1:192, ])
+
+national_USwide <- subset(national[193:198, ])
+
+```
+
+Visualizing distributions of various subsets created
+
+```{r setup, include=TRUE, echo=FALSE}
+#Bar plot for Age3 borough data set
+Age3_borough$time_period <- as.factor(Age3_borough$time_period)
+ggplot(Age3_borough, aes(fill=Age3_borough$geo_area_name, y=Age3_borough$age3_number, x=Age3_borough$time_period)) + 
+    geom_col(position="dodge", stat="identity") + labs(x = "Time period", y = "Number of children tested positive", title = "Children tested positive under Age 3years")
+
+#Bar plot for Age6 borough data set
+Age6_borough$time_period <- as.factor(Age6_borough$time_period)
+ggplot(Age6_borough, aes(fill=Age6_borough$geo_area_name, y=Age6_borough$age6_bll_total, x=Age6_borough$time_period)) + geom_bar(position="dodge", stat="identity") + labs(x = "Time period", y = "Number of children tested positive", title = "Children tested positive under Age 6years")
+
+#scatter plot for Age3 neighborhood data set
+ggplot(data = Age3_neighborhood, aes(x = Age3_neighborhood$geo_area_name, y = Age3_neighborhood$age3_number)) + geom_point(color = Age3_neighborhood$time_period, position = "jitter") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text=element_text(size=8), text=element_text(size=5)) + labs(x = "Neighborhood", y = "Number of children tested positive", title = "Children tested positive under Age 3years by borough")
+
+
+#scatter plot for Age6 neighborhood data set
+ggplot(data = Age6_neighborhood, aes(x = Age6_neighborhood$geo_area_name, y = Age6_neighborhood$age6_bll_total)) + geom_point(color = Age6_neighborhood$time_period, position = "jitter") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text=element_text(size=8), text=element_text(size=5)) + labs(x = "Neighborhood", y = "Number of children tested positive", title = "Children tested positive under Age 6years by borough")
+
+#bar plot for National states data set
+national_states$year <- as.factor((national_states$year))
+ggplot(national_states, aes(fill=national_states$year, y=national_states$'Children_tested<72m', x=national_states$state, space =1)) + geom_bar(position="dodge", stat="identity") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text=element_text(size=8), text=element_text(size=5)) + labs(x = "State", y = "Number of children tested positive", title = "Children tested positive under Age 6years by state")
+
+#bar plot for National US wide data set
+national_USwide$year <- as.factor((national_USwide$year))
+ggplot(national_USwide, aes(fill=national_USwide$year, y=national_USwide$'Children_tested<72m', x=national_USwide$state, space =1)) + geom_bar(position="dodge", stat="identity") + labs(x = "State", y = "Number of children tested positive", title = "Children tested positive under Age 6years by USwide")
+
+
+```
+
+
+
+
+```{r setup, include=TRUE, echo=FALSE}
+library(corrplot)
+#Selecting only numeric values to perform correlation analysis for Age6 dataset.
+Age6_num_data <- Age6_new[, sapply(Age6_new, is.numeric)]
+Age6_cor <- cor(Age6_num_data, use="pairwise.complete.obs", method = c("spearman"))
+
+corrplot(Age6_cor)
+         
+ggplot(Age6_new, aes(x=Age6_new$time_period, y=Age6_new$age6_bll_5)) + geom_point(position = "jitter")        
+```
+
